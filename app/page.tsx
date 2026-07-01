@@ -1,124 +1,81 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// Supabaseの接続情報
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-// クライアントの初期化（RLSを無視してINSERTのみ行うため、anon keyを使用）
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true, // ログイン状態を保持する
-  },
-});
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [inputTitle, setInputTitle] = useState('');
   const [inputBody, setInputBody] = useState('');
-  const [lastSaved, setLastSaved] = useState<string>('');
-  const [authLoading, setAuthLoading] = useState(true); // 認証ロード中フラグ
+  const [status, setStatus] = useState<string>('執筆中...');
 
-  // 1. 初回ログインチェック
   useEffect(() => {
-    async function getUser() {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-      setAuthLoading(false);
-    }
-    getUser();
+    supabase.auth.getUser().then(({ data }) => setUser(data.user));
   }, []);
 
-  // 2. 定期自動保存の仕組み（10分ごとに保存）
+  // ⑤ 手動保存関数
+  const handleSave = useCallback(async () => {
+    if (!inputTitle && !inputBody) return;
+    setStatus('保存中...');
+    const { error } = await supabase.from('logs').insert([{ text: inputTitle, body: inputBody }]);
+    if (!error) {
+      setStatus(`最終保存: ${new Date().toLocaleTimeString()}`);
+    } else {
+      setStatus('保存失敗');
+    }
+  }, [inputTitle, inputBody]);
+
+  // ⑤ ショートカットキー (Ctrl + S)
   useEffect(() => {
-    // ユーザーがいない、またはタイトルも本文も空の場合は何もしない
-    if (!user || (!inputTitle && !inputBody)) return;
-
-    // 10分おきに保存するタイマーを設定
-    const interval = setInterval(async () => {
-      console.log('定期自動保存を実行中...');
-      
-      // データベースの 'logs' テーブルにデータを挿入
-      const { error } = await supabase
-        .from('logs')
-        .insert([
-          { 
-            text: inputTitle, // タイトルを保存
-            body: inputBody   // 本文を保存
-          }
-        ]);
-      
-      if (error) {
-        console.error('保存エラー:', error.message);
-      } else {
-        console.log('保存成功:', new Date().toLocaleTimeString());
-        setLastSaved(new Date().toLocaleTimeString()); // 画面に保存時間を表示
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
       }
-    }, 600000); // 10分 = 600000ミリ秒
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSave]);
 
-    // クリーンアップ関数（コンポーネントがアンmountされたり、依存配列が変わったらタイマーを解除）
+  // 10分ごとの定期自動保存
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(handleSave, 600000);
     return () => clearInterval(interval);
-  }, [user, inputTitle, inputBody]); // 依存配列にuser, inputTitle, inputBodyを含める
+  }, [user, handleSave]);
 
-  // 認証チェック中の表示
-  if (authLoading) {
-    return <div className="min-h-screen bg-black text-gray-400 flex items-center justify-center">認証確認中...</div>;
-  }
+  if (!user) return <div className="p-10 text-gray-500">ログインが必要です。</div>;
 
-  // ログインしていない場合の表示
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-black text-gray-200 p-6 flex flex-col items-center justify-center">
-        <div className="text-center border border-gray-700 p-10 rounded-lg bg-gray-900">
-          <h1 className="text-2xl font-bold mb-4">Cloud Live Note</h1>
-          <p className="text-gray-400">このノートを使用するには、Supabase Authでログインしてください。</p>
-          <p className="text-xs text-gray-600 mt-2">※事前にAuthの設定が必要です。</p>
-        </div>
-      </div>
-    );
-  }
-
-  // 🟢 メインの執筆画面（ダークモード）
   return (
-    // 全体の背景: 黒 (bg-black), テキスト: 白に近いグレー (text-gray-100)
-    <div className="min-h-screen bg-black text-gray-100 p-4 md:p-12 font-serif selection:bg-gray-700">
+    <div className="min-h-screen bg-black text-gray-100 p-4 md:p-12 font-serif">
       <div className="max-w-4xl mx-auto relative">
-        
-        {/* ヘッダー（ログインユーザー名とログアウトボタン） */}
-        <header className="flex justify-between items-center mb-10 pb-4 border-b border-gray-800 text-sm text-gray-400">
-          <span>User: {user.email}</span>
-          <button 
-            onClick={() => supabase.auth.signOut()}
-            className="hover:text-white"
-          >
-            ログアウト
-          </button>
-        </header>
+        {/* ③ リアルタイム文字数カウンター */}
+        <div className="fixed top-6 right-6 text-sm text-gray-500 font-mono">
+          {inputBody.length} 文字
+        </div>
 
-        {/* ① タイトル入力欄（広い領域） */}
         <input
           type="text"
           value={inputTitle}
           onChange={(e) => setInputTitle(e.target.value)}
-          placeholder="タイトルを入力..."
-          // 文字サイズ大 (text-3xl), 太字 (font-bold), 背景透明 (bg-transparent), 枠線なし, 白文字 (text-white)
-          className="w-full text-3xl font-bold bg-transparent border-none outline-none mb-6 text-white placeholder:text-gray-600"
+          placeholder="タイトル..."
+          className="w-full text-3xl font-bold bg-transparent border-none outline-none mb-6 text-white"
         />
         
-        {/* ② 本文入力欄（広い領域・改行エンター可） */}
         <textarea
           value={inputBody}
           onChange={(e) => setInputBody(e.target.value)}
-          placeholder="ここに本文を記述します。10分ごとに自動保存されます..."
-          // 高さ画面の70% (h-[70vh]), 文字サイズ中 (text-lg), 背景透明, 枠線なし, 行間 (leading-relaxed), グレー文字 (text-gray-300)
-          className="w-full h-[70vh] bg-transparent border-none outline-none text-lg leading-relaxed resize-none text-gray-300 placeholder:text-gray-600"
+          placeholder="本文を記述 (Ctrl + S で手動保存)..."
+          className="w-full h-[70vh] bg-transparent border-none outline-none text-lg leading-relaxed resize-none text-gray-300"
         />
 
-        {/* ③ 自動保存の状態表示（画面右下に固定） */}
+        {/* 状態表示エリア */}
         <div className="fixed bottom-6 right-6 text-xs text-gray-600 font-mono">
-          {lastSaved ? `最終自動保存: ${lastSaved}` : '10分ごとに自動保存待機中...'}
+          {status}
         </div>
       </div>
     </div>
