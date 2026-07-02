@@ -80,8 +80,8 @@ export default function Home() {
 
         {/* 操作パネル */}
         <div className="fixed bottom-20 left-6 bg-gray-900 p-4 rounded-lg border border-gray-700 flex flex-col gap-2">
-          <button onClick={togglePlay} className="text-xs bg-white text-black px-3 py-1 rounded font-bold">
-            {isPlaying ? '一時停止' : '再生'}
+          <button onClick={togglePlay} className="text-xs bg-black text-white px-3 py-1 rounded font-bold">
+            {isPlaying ? '□' : '▷'}
           </button>
           <input type="range" min="0" max="100" value={volume} onChange={changeVolume} className="w-20" />
         </div>
