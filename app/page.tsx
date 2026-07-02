@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -13,23 +13,52 @@ export default function Home() {
   const [inputBody, setInputBody] = useState('');
   const [status, setStatus] = useState<string>('執筆中...');
 
+  // --- YouTube用の状態 ---
+  const [player, setPlayer] = useState<any>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(50);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
+
+    // YouTube APIのロード
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    document.body.appendChild(tag);
+
+    (window as any).onYouTubeIframeAPIReady = () => {
+      const newPlayer = new (window as any).YT.Player('youtube-player', {
+        height: '0',
+        width: '0',
+        playerVars: { listType: 'playlist', list: 'PLCuIJGJzHGmU', autoplay: 0 },
+        events: {
+          onStateChange: (e: any) => setIsPlaying(e.data === 1)
+        }
+      });
+      setPlayer(newPlayer);
+    };
   }, []);
 
-  // ⑤ 手動保存関数
+  const togglePlay = () => {
+    if (!player) return;
+    if (isPlaying) player.pauseVideo();
+    else player.playVideo();
+  };
+
+  const changeVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVol = parseInt(e.target.value);
+    setVolume(newVol);
+    player?.setVolume(newVol);
+  };
+
   const handleSave = useCallback(async () => {
     if (!inputTitle && !inputBody) return;
     setStatus('保存中...');
     const { error } = await supabase.from('logs').insert([{ text: inputTitle, body: inputBody }]);
-    if (!error) {
-      setStatus(`最終保存: ${new Date().toLocaleTimeString()}`);
-    } else {
-      setStatus('保存失敗');
-    }
+    if (!error) setStatus(`最終保存: ${new Date().toLocaleTimeString()}`);
+    else setStatus('保存失敗');
   }, [inputTitle, inputBody]);
 
-  // ⑤ ショートカットキー (Ctrl + S)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -41,22 +70,23 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSave]);
 
-  // 10分ごとの定期自動保存
-  useEffect(() => {
-    if (!user) return;
-    const interval = setInterval(handleSave, 600000);
-    return () => clearInterval(interval);
-  }, [user, handleSave]);
-
   if (!user) return <div className="p-10 text-gray-500">ログインが必要です。</div>;
 
   return (
     <div className="min-h-screen bg-black text-gray-100 p-4 md:p-12 font-serif">
       <div className="max-w-4xl mx-auto relative">
-        {/* ③ リアルタイム文字数カウンター */}
-        <div className="fixed top-6 right-6 text-sm text-gray-500 font-mono">
-          {inputBody.length} 文字
+        {/* YouTubeプレイヤー本体（隠し） */}
+        <div id="youtube-player" className="hidden" />
+
+        {/* 操作パネル */}
+        <div className="fixed bottom-20 left-6 bg-gray-900 p-4 rounded-lg border border-gray-700 flex flex-col gap-2">
+          <button onClick={togglePlay} className="text-xs bg-white text-black px-3 py-1 rounded font-bold">
+            {isPlaying ? '一時停止' : '音楽を再生'}
+          </button>
+          <input type="range" min="0" max="100" value={volume} onChange={changeVolume} className="w-20" />
         </div>
+
+        <div className="fixed top-6 right-6 text-sm text-gray-500 font-mono">{inputBody.length} 文字</div>
 
         <input
           type="text"
@@ -65,31 +95,16 @@ export default function Home() {
           placeholder="タイトル..."
           className="w-full text-3xl font-bold bg-transparent border-none outline-none mb-6 text-white"
         />
-
-
-        {/* 透明度をゼロにして、配置はそのままにする */}
-        <div className="opacity-0 absolute top-0 left-0 w-0 h-0 overflow-hidden">
-          <iframe
-            src="https://www.youtube.com/embed/videoseries?list=PLCuIJGJzHGmU&autoplay=1"
-            width="1"
-            height="1"
-            allow="autoplay"
-          ></iframe>
-        </div>
-
+        
         <textarea
           value={inputBody}
           onChange={(e) => setInputBody(e.target.value)}
-          placeholder="本文を記述 (Ctrl + S で手動保存)..."
+          placeholder="本文を記述..."
           className="w-full h-[70vh] bg-transparent border-none outline-none text-lg leading-relaxed resize-none text-gray-300"
         />
 
-        {/* 状態表示エリア */}
-        <div className="fixed bottom-6 right-6 text-xs text-gray-600 font-mono">
-          {status}
-        </div>
+        <div className="fixed bottom-6 right-6 text-xs text-gray-600 font-mono">{status}</div>
       </div>
     </div>
   );
 }
-
