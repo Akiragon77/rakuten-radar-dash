@@ -65,7 +65,19 @@ export default function Home() {
           placeholder="タイトル..."
           className="w-full text-3xl font-bold bg-transparent border-none outline-none mb-6 text-white"
         />
-        
+        <div className="mt-8 p-4 border border-gray-800 rounded-lg">
+          <h2 className="text-sm text-gray-500 mb-4">執筆用BGM</h2>
+          <iframe
+            width="100%"
+            height="315"
+            src="https://www.youtube.com/embed/videoseries?list=PLCuIJGJzHGmU"
+            title="YouTube playlist player"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          ></iframe>
+        </div>
+
         <textarea
           value={inputBody}
           onChange={(e) => setInputBody(e.target.value)}
@@ -81,3 +93,4 @@ export default function Home() {
     </div>
   );
 }
+
